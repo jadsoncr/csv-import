@@ -210,7 +210,7 @@ export default function Main(props: CSVImporterProps) {
               const startIndex = (selectedHeaderRow || 0) + 1;
 
               // Default combiner for multiple column values
-              const defaultCombiner = (values: string[]) => values.filter(v => v && v.trim()).join(" ");
+              const defaultCombiner = (values: string[]) => values.filter(v => v !== null && v !== undefined && String(v).trim()).join(" ");
 
               const mappedRows: MappedRow[] = [];
               data.rows.slice(startIndex).forEach((row: FileRow) => {
