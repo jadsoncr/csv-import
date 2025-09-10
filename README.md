@@ -70,7 +70,6 @@ function MyComponent() {
             },
             {
               name: "Age",
-              data_type: "number",
             },
           ],
         }}
@@ -106,7 +105,6 @@ function MyComponent() {
           },
           {
             name: "Age",
-            data_type: "number",
           },
         ],
       },
@@ -169,7 +167,6 @@ template={{
     },
     {
       name: "Age",
-      data_type: "number",
     },
     {
       name: "Category",
