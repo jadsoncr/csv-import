@@ -17,6 +17,7 @@ import Complete from "../complete";
 import MapColumns from "../map-columns";
 import RowSelection from "../row-selection";
 import Uploader from "../uploader";
+import ReviewAndFix from "../review";
 import { PiX } from "react-icons/pi";
 import { useTranslation } from "react-i18next";
 
@@ -62,6 +63,14 @@ export default function Main(props: CSVImporterProps) {
   // Used in the final step to show a loading indicator while the data is submitting
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
+  // Review step data
+  type MappedRow = {
+    index: number;
+    values: Record<string, number | string>;
+  };
+  const [reviewRows, setReviewRows] = useState<MappedRow[]>([]);
+  const [reviewColumns, setReviewColumns] = useState<Array<{ key: string; name: string }>>([]);
+
   const [parsedTemplate, setParsedTemplate] = useState<Template>({
     columns: [],
   });
@@ -88,6 +97,8 @@ export default function Main(props: CSVImporterProps) {
     setData(emptyData);
     setSelectedHeaderRow(0);
     setColumnMapping({});
+    setReviewRows([]);
+    setReviewColumns([]);
     setDataError(null);
     setStep(StepEnum.Upload);
   };
@@ -199,14 +210,9 @@ export default function Main(props: CSVImporterProps) {
             skipHeaderRowSelection={skipHeader}
             selectedHeaderRow={selectedHeaderRow}
             onSuccess={(columnMapping) => {
-              setIsSubmitting(true);
               setColumnMapping(columnMapping);
 
-              // TODO (client-sdk): Move this type, add other data attributes (i.e. column definitions), and move the data processing to a function
-              type MappedRow = {
-                index: number;
-                values: Record<string, number | string>;
-              };
+              // Process mapped rows for review
               const startIndex = (selectedHeaderRow || 0) + 1;
 
               // Default combiner for multiple column values
@@ -251,24 +257,44 @@ export default function Main(props: CSVImporterProps) {
               
               // Get unique template columns (avoid duplicates from multi-mapping)
               const uniqueTemplateKeys = Array.from(new Set(includedColumns.map(({ key }) => key)));
-              const uniqueColumns = uniqueTemplateKeys.map(key => ({ key, name: key }));
+              const uniqueColumns = uniqueTemplateKeys.map(key => {
+                const templateCol = parsedTemplate.columns.find(tc => tc.key === key);
+                return { key, name: templateCol?.name || key };
+              });
 
+              // Store data for review step
+              setReviewRows(mappedRows);
+              setReviewColumns(uniqueColumns);
+
+              // Navigate to Review step instead of calling onComplete
+              goNext();
+            }}
+            isSubmitting={false}
+            onCancel={skipHeader ? reload : () => goBack(StepEnum.RowSelection)}
+          />
+        );
+      case StepEnum.Review:
+        return (
+          <ReviewAndFix
+            template={parsedTemplate}
+            rows={reviewRows}
+            columns={reviewColumns}
+            setRows={setReviewRows}
+            onBack={() => goBack(StepEnum.MapColumns)}
+            onConfirm={() => {
+              setIsSubmitting(true);
               const onCompleteData = {
-                num_rows: mappedRows.length,
-                num_columns: uniqueColumns.length,
+                num_rows: reviewRows.length,
+                num_columns: reviewColumns.length,
                 error: null,
-                // TODO (client-sdk): Either remove "name" or change it to the be the name of the original upload column
-                columns: uniqueColumns,
-                rows: mappedRows,
+                columns: reviewColumns,
+                rows: reviewRows,
               };
-
               onComplete && onComplete(onCompleteData);
-
               setIsSubmitting(false);
               goNext();
             }}
             isSubmitting={isSubmitting}
-            onCancel={skipHeader ? reload : () => goBack(StepEnum.RowSelection)}
           />
         );
       case StepEnum.Complete:

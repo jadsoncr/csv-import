@@ -1,0 +1,11 @@
+export declare const parseObjectOrStringJSON: (name: string, param?: Record<string, unknown> | string) => string;
+export declare const parseObjectOrStringJSONToRecord: (name: string, param?: Record<string, unknown> | string) => Record<string, unknown>;
+export declare const validateJSON: (str: string, paramName: string) => string;
+export declare const sanitizeKey: (input: string) => string;
+export declare const parseOptionalBoolean: (val?: boolean) => "" | "true" | "false";
+export declare const strToBoolean: (str: string) => boolean;
+export declare const strToOptionalBoolean: (str: string) => boolean | undefined;
+export declare const strToDefaultBoolean: (str: string, defaultValue: boolean) => boolean;
+export declare const isValidColor: (color: string) => boolean;
+export declare const expandHex: (color: string) => string;
+export declare const darkenColor: (color: string, percent: number) => string;
