@@ -1,4 +1,5 @@
 import React from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useRecipes } from './state/useRecipes';
 import { RecipeList } from './components/RecipeList';
 import { RecipeEditor } from './components/RecipeEditor';
@@ -9,6 +10,7 @@ import { Recipe } from '../../models/recipes';
  * Layout em 2 colunas: Lista (esquerda) + Editor (direita)
  */
 export const RecipesPage: React.FC = () => {
+  const [searchParams] = useSearchParams();
   const {
     recipes,
     selectedRecipe,
@@ -31,6 +33,9 @@ export const RecipesPage: React.FC = () => {
     }
   };
 
+  // Detecta se veio do Dashboard (contexto)
+  const fromDashboard = searchParams.get('from') === 'dashboard';
+
   return (
     <div>
       {/* Header */}
@@ -42,6 +47,32 @@ export const RecipesPage: React.FC = () => {
           Controle o custo por porção e proteja sua margem.
         </p>
       </div>
+
+      {/* Banner contextual (quando vem do Dashboard) */}
+      {fromDashboard && selectedRecipe && (
+        <div
+          style={{
+            backgroundColor: '#FEF3C7',
+            border: '1px solid #FCD34D',
+            borderRadius: 8,
+            padding: 16,
+            marginBottom: 24,
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: 12,
+          }}
+        >
+          <div style={{ fontSize: 20 }}>💡</div>
+          <div style={{ flex: 1 }}>
+            <p style={{ color: '#78350F', fontSize: 14, fontWeight: 600, margin: '0 0 4px 0' }}>
+              Você está aqui porque este item pode ser otimizado
+            </p>
+            <p style={{ color: '#92400E', fontSize: 13, margin: 0, lineHeight: 1.5 }}>
+              Ajustar este item pode melhorar sua margem. Revise os ingredientes e quantidades abaixo.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Erro */}
       {error && (

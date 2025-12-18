@@ -2,13 +2,13 @@ import React, { useMemo } from 'react';
 import { colors } from '../../styles/tokens';
 
 export type PeriodState = {
-  mode: 'month' | 'last12';
-  from: string;
-  to: string;
+  mode: 'custom' | 'last12';
+  from: string; // YYYY-MM-DD
+  to: string; // YYYY-MM-DD
   compare?: {
     from: string;
     to: string;
-    label: string; // ex: "vs mês anterior"
+    label: string;
   };
 };
 
@@ -18,41 +18,37 @@ interface PeriodFilterProps {
 }
 
 /**
- * Filtro de período simples
- * - Modo mês (seleção de mês e toggle de comparação com mês anterior)
- * - Modo últimos 12 meses
+ * Filtro de período com seleção de data livre
+ * - Permite selecionar data de início e data de fim
  */
 export const PeriodFilter: React.FC<PeriodFilterProps> = ({ value, onChange }) => {
-  const monthValue = useMemo(() => value.from.slice(0, 7), [value.from]);
-
-  const handleModeChange = (mode: 'month' | 'last12') => {
-    if (mode === 'last12') {
-      const { from, to } = buildLast12Range();
-      onChange({ mode, from, to });
-      return;
-    }
-    const { from, to } = buildMonthRange(monthValue);
-    onChange({ mode, from, to });
+  const handleFromChange = (date: string) => {
+    onChange({ ...value, from: date });
   };
 
-  const handleMonthChange = (month: string) => {
-    const { from, to } = buildMonthRange(month);
-    onChange({ mode: 'month', from, to, compare: value.compare });
+  const handleToChange = (date: string) => {
+    onChange({ ...value, to: date });
   };
 
   const handleToggleCompare = (checked: boolean) => {
-    if (value.mode !== 'month') return;
     if (!checked) {
       onChange({ ...value, compare: undefined });
       return;
     }
-    const { from: currentFrom, to: currentTo } = buildMonthRange(monthValue);
-    const prev = buildPreviousMonthRange(monthValue);
+    // Calcula período anterior com mesmo tamanho
+    const fromDate = new Date(value.from);
+    const toDate = new Date(value.to);
+    const diff = toDate.getTime() - fromDate.getTime();
+    const prevTo = new Date(fromDate.getTime() - 86400000); // dia antes
+    const prevFrom = new Date(prevTo.getTime() - diff);
+    
     onChange({
-      mode: 'month',
-      from: currentFrom,
-      to: currentTo,
-      compare: { ...prev, label: 'vs mês anterior' },
+      ...value,
+      compare: {
+        from: prevFrom.toISOString().split('T')[0],
+        to: prevTo.toISOString().split('T')[0],
+        label: 'vs período anterior',
+      },
     });
   };
 
@@ -60,47 +56,65 @@ export const PeriodFilter: React.FC<PeriodFilterProps> = ({ value, onChange }) =
     <div
       style={{
         display: 'flex',
-        gap: 12,
+        gap: 16,
         alignItems: 'center',
-        padding: 12,
-        border: `1px solid ${colors.muted}20`,
-        borderRadius: 8,
-        backgroundColor: colors.surface,
+        padding: '12px 20px',
+        border: '1px solid #1F1F1F',
+        borderRadius: 10,
+        backgroundColor: '#0A0A0A',
       }}
     >
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        <label style={{ color: colors.muted, fontSize: 14 }}>Período</label>
-        <select
-          value={value.mode}
-          onChange={(e) => handleModeChange(e.target.value as 'month' | 'last12')}
-          style={selectStyle}
-        >
-          <option value="month">Mês</option>
-          <option value="last12">Últimos 12 meses</option>
-        </select>
+        <label style={{ color: '#71717A', fontSize: 13, fontWeight: 500 }}>De</label>
+        <input
+          type="date"
+          value={value.from}
+          onChange={(e) => handleFromChange(e.target.value)}
+          max={value.to}
+          style={{
+            ...inputStyle,
+            minWidth: 150,
+          }}
+        />
       </div>
 
-      {value.mode === 'month' && (
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <label style={{ color: '#71717A', fontSize: 13, fontWeight: 500 }}>Até</label>
         <input
-          type="month"
-          value={monthValue}
-          onChange={(e) => handleMonthChange(e.target.value)}
-          style={selectStyle}
+          type="date"
+          value={value.to}
+          onChange={(e) => handleToChange(e.target.value)}
+          min={value.from}
+          style={{
+            ...inputStyle,
+            minWidth: 150,
+          }}
         />
-      )}
+      </div>
 
-      {value.mode === 'month' && (
-        <label style={{ display: 'flex', gap: 8, alignItems: 'center', color: colors.muted, fontSize: 14 }}>
-          <input
-            type="checkbox"
-            checked={!!value.compare}
-            onChange={(e) => handleToggleCompare(e.target.checked)}
-          />
-          Comparar com mês anterior
-        </label>
-      )}
+      <label style={{ display: 'flex', gap: 8, alignItems: 'center', color: '#A1A1AA', fontSize: 13 }}>
+        <input
+          type="checkbox"
+          checked={!!value.compare}
+          onChange={(e) => handleToggleCompare(e.target.checked)}
+          style={{ cursor: 'pointer' }}
+        />
+        Comparar com período anterior
+      </label>
     </div>
   );
+};
+
+// Helpers de estilo
+const inputStyle: React.CSSProperties = {
+  padding: '8px 12px',
+  backgroundColor: '#000000',
+  color: '#FFFFFF',
+  border: '1px solid #27272A',
+  borderRadius: 6,
+  fontSize: 13,
+  cursor: 'pointer',
+  fontFamily: 'inherit',
 };
 
 const selectStyle: React.CSSProperties = {
@@ -111,14 +125,13 @@ const selectStyle: React.CSSProperties = {
   borderRadius: 6,
 };
 
-// Helpers de datas
+// Helpers de datas (manter para compatibilidade)
 const pad = (n: number) => String(n).padStart(2, '0');
 
 export const buildMonthRange = (monthIso: string) => {
-  // monthIso: "YYYY-MM"
   const [year, month] = monthIso.split('-').map(Number);
   const from = `${year}-${pad(month)}-01`;
-  const toDate = new Date(year, month, 0); // último dia do mês
+  const toDate = new Date(year, month, 0);
   const to = `${year}-${pad(month)}-${pad(toDate.getDate())}`;
   return { from, to };
 };

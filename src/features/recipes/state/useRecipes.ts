@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Recipe } from '../../../models/recipes';
 import { listRecipes, getRecipe, saveRecipe, deleteRecipe } from '../../../services/recipes.service';
 import { ApiError } from '../../../services/errors';
@@ -7,6 +8,7 @@ import { ApiError } from '../../../services/errors';
  * Hook para gerenciar estado de Recipes
  */
 export const useRecipes = () => {
+  const [searchParams] = useSearchParams();
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null);
   const [loading, setLoading] = useState(false);
@@ -136,6 +138,17 @@ export const useRecipes = () => {
   useEffect(() => {
     loadRecipes();
   }, [loadRecipes]);
+
+  // Deep-link: Carrega recipe específica se recipeId estiver na URL
+  useEffect(() => {
+    const recipeId = searchParams.get('recipeId');
+    if (recipeId && recipes.length > 0) {
+      // Só carrega se ainda não estiver selecionada
+      if (!selectedRecipe || selectedRecipe.id !== recipeId) {
+        loadRecipe(recipeId);
+      }
+    }
+  }, [searchParams, recipes, selectedRecipe, loadRecipe]);
 
   return {
     recipes: filteredRecipes,

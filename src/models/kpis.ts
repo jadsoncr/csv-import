@@ -14,12 +14,19 @@ export type KpiCard = {
   trend?: 'up' | 'down' | 'flat';
   deltaValue?: number | string;
   deltaLabel?: string;
+  sparkline?: number[]; // Últimos 7 pontos para mini-gráfico de tendência
+  benchmark?: {
+    min: number;
+    max: number;
+    label: string; // ex: "Ideal: 30-35%"
+  };
 };
 
 export type TopImpact = {
   label: string;
   value: number;
   unit?: string;
+  recipeId?: string; // ID da ficha técnica relacionada (para deep-link)
 };
 
 export type RecipeIndicator = {
@@ -37,5 +44,15 @@ export type KpisResponse = {
   topImpacts?: TopImpact[];
   recipeIndicator?: RecipeIndicator;
   usageHealth?: string;
+  executiveSummary?: ExecutiveSummary; // Novo: resumo do que mudou
+};
+
+/**
+ * Resumo executivo: destaque do que realmente importa
+ */
+export type ExecutiveSummary = {
+  headline: string; // Ex: "Sua margem melhorou 3% este mês"
+  insights: string[]; // Lista de 2-3 insights curtos
+  alerts?: string[]; // Alertas de atenção (opcional)
 };
 

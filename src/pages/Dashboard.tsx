@@ -1,8 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { PageHeader } from '../components/ui/PageHeader';
-import { PeriodFilter, PeriodState, buildLast12Range, buildMonthRange, buildPreviousMonthRange } from '../components/ui/PeriodFilter';
+import { PeriodFilter, PeriodState } from '../components/ui/PeriodFilter';
+import { Sparkline } from '../components/ui/Sparkline';
 import { getKpis } from '../services/kpis.service';
+import { getSuggestions } from '../services/suggestions.service';
 import { KpiCard, KpisResponse } from '../models/kpis';
+import { Suggestion } from '../models/suggestions';
 import { toHumanMessage } from '../services/errors';
 
 /**
@@ -17,18 +20,18 @@ const PRODUCT_GUIDE = 'O BRO.AI transforma dados operacionais em decisões simpl
 export const Dashboard: React.FC = () => {
   const [period, setPeriod] = useState<PeriodState>(() => {
     const now = new Date();
-    const monthIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    const base = buildMonthRange(monthIso);
-    const prev = buildPreviousMonthRange(monthIso);
+    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+    const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    
     return {
-      mode: 'month',
-      from: base.from,
-      to: base.to,
-      compare: { ...prev, label: 'vs mês anterior' },
+      mode: 'custom',
+      from: firstDay.toISOString().split('T')[0],
+      to: lastDay.toISOString().split('T')[0],
     };
   });
 
   const [data, setData] = useState<KpisResponse | null>(null);
+  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -36,13 +39,17 @@ export const Dashboard: React.FC = () => {
     try {
       setLoading(true);
       setError(null);
-      const response = await getKpis({
-        from: p.from,
-        to: p.to,
-        compareFrom: p.compare?.from,
-        compareTo: p.compare?.to,
-      });
-      setData(response);
+      const [kpisResponse, suggestionsResponse] = await Promise.all([
+        getKpis({
+          from: p.from,
+          to: p.to,
+          compareFrom: p.compare?.from,
+          compareTo: p.compare?.to,
+        }),
+        getSuggestions(),
+      ]);
+      setData(kpisResponse);
+      setSuggestions(suggestionsResponse);
     } catch (err) {
       setError(toHumanMessage(err));
     } finally {
@@ -67,27 +74,133 @@ export const Dashboard: React.FC = () => {
   }, [data]);
 
   const renderCard = (card: KpiCard) => {
+    const isPositive = card.deltaValue && card.deltaValue.includes('+');
+    const isNegative = card.deltaValue && card.deltaValue.includes('-');
+    const hasBenchmark = !!card.benchmark;
+    const currentValue = typeof card.value === 'string' 
+      ? parseFloat(card.value.replace(/[^\d.-]/g, '')) 
+      : card.value;
+    
+    // Verifica se está fora do benchmark
+    const isAboveBenchmark = hasBenchmark && currentValue > (card.benchmark?.max || 0);
+    const isBelowBenchmark = hasBenchmark && currentValue < (card.benchmark?.min || 0);
+    
     return (
       <div
         key={card.id}
         style={{
-          backgroundColor: '#111111',
-          border: '1px solid #222',
-          borderRadius: 8,
-          padding: 16,
+          backgroundColor: '#0A0A0A',
+          border: '1px solid #1F1F1F',
+          borderRadius: 12,
+          padding: 20,
           minWidth: 220,
+          transition: 'all 0.2s ease',
+          cursor: 'default',
+          position: 'relative',
+          overflow: 'hidden',
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.borderColor = '#2A2A2A';
+          e.currentTarget.style.transform = 'translateY(-2px)';
+          e.currentTarget.style.boxShadow = '0 8px 16px rgba(0,0,0,0.3)';
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.borderColor = '#1F1F1F';
+          e.currentTarget.style.transform = 'translateY(0)';
+          e.currentTarget.style.boxShadow = 'none';
         }}
       >
-        <div style={{ color: '#A1A1AA', fontSize: 13, marginBottom: 8 }}>{card.label}</div>
-        <div style={{ color: '#FFFFFF', fontSize: 24, fontWeight: 700, marginBottom: 8 }}>{card.value}</div>
+        {/* Indicador sutil de status */}
+        {isNegative && card.id === 'lucro-bruto' && (
+          <div style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            height: 2,
+            background: 'linear-gradient(90deg, #EF4444, #DC2626)',
+          }} />
+        )}
+        {isPositive && card.id === 'lucro-bruto' && (
+          <div style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            height: 2,
+            background: 'linear-gradient(90deg, #10B981, #059669)',
+          }} />
+        )}
+        {isAboveBenchmark && (
+          <div style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            height: 2,
+            background: 'linear-gradient(90deg, #F59E0B, #D97706)',
+          }} />
+        )}
+        
+        <div style={{ color: '#71717A', fontSize: 12, fontWeight: 500, marginBottom: 12, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          {card.label}
+        </div>
+        
+        {/* Valor principal */}
+        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 8 }}>
+          <div style={{ color: '#FFFFFF', fontSize: 32, fontWeight: 700, letterSpacing: '-0.02em' }}>
+            {card.value}
+          </div>
+          {/* Mini-gráfico de tendência */}
+          {card.sparkline && card.sparkline.length > 0 && (
+            <Sparkline 
+              data={card.sparkline} 
+              width={60} 
+              height={24} 
+              color={isPositive ? '#10B981' : isNegative ? '#EF4444' : '#3B82F6'}
+            />
+          )}
+        </div>
+        
+        {/* Delta */}
         {card.deltaValue && (
-          <div style={{ color: '#A1A1AA', fontSize: 13 }}>
-            {card.deltaValue} {card.deltaLabel || ''}
+          <div style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 4,
+            fontSize: 13,
+            fontWeight: 500,
+            color: isPositive ? '#10B981' : isNegative ? '#EF4444' : '#71717A',
+            backgroundColor: isPositive ? 'rgba(16, 185, 129, 0.1)' : isNegative ? 'rgba(239, 68, 68, 0.1)' : 'transparent',
+            padding: '4px 8px',
+            borderRadius: 6,
+            marginBottom: hasBenchmark ? 8 : 0,
+          }}>
+            {isPositive ? '↗' : isNegative ? '↘' : '→'} {card.deltaValue} {card.deltaLabel || ''}
           </div>
         )}
-        {card.id === 'cmv' && (
-          <div style={{ color: '#A1A1AA', fontSize: 12, marginTop: 8 }}>
-            CMV explicado e ajustável via Ficha Técnica.
+        
+        {/* Benchmark */}
+        {hasBenchmark && (
+          <div style={{
+            marginTop: 12,
+            padding: '8px 10px',
+            backgroundColor: isAboveBenchmark ? 'rgba(245, 158, 11, 0.1)' : isBelowBenchmark ? 'rgba(239, 68, 68, 0.1)' : 'rgba(59, 130, 246, 0.1)',
+            borderRadius: 6,
+            border: `1px solid ${isAboveBenchmark ? '#F59E0B' : isBelowBenchmark ? '#EF4444' : '#3B82F6'}30`,
+          }}>
+            <div style={{ fontSize: 11, color: '#71717A', marginBottom: 4 }}>
+              {isAboveBenchmark ? '⚠️ Acima do ideal' : isBelowBenchmark ? '⚠️ Abaixo do ideal' : '✓ Dentro da faixa'}
+            </div>
+            <div style={{ fontSize: 12, color: '#A1A1AA', lineHeight: 1.4 }}>
+              {card.benchmark.label}
+            </div>
+          </div>
+        )}
+        
+        {card.id === 'cmv' && !hasBenchmark && (
+          <div style={{ color: '#52525B', fontSize: 12, marginTop: 12, lineHeight: 1.4 }}>
+            Ajustável via Ficha Técnica
           </div>
         )}
       </div>
@@ -97,33 +210,89 @@ export const Dashboard: React.FC = () => {
   const renderTopImpacts = () => {
     if (!data?.topImpacts || data.topImpacts.length === 0) return null;
     const top = data.topImpacts.slice(0, 5);
+    
+    const maxValue = Math.max(...top.map(item => item.value));
+    
     return (
-      <div style={{ backgroundColor: '#111', border: '1px solid #222', borderRadius: 8, padding: 16 }}>
-        <div style={{ color: '#FFF', fontWeight: 600, marginBottom: 8 }}>Top impactos no CMV</div>
-        <p style={{ color: '#A1A1AA', fontSize: 13, marginBottom: 12 }}>
-          Esses itens explicam boa parte do seu CMV.
-        </p>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr style={{ backgroundColor: '#1a1a1a' }}>
-              <th style={thStyle}>Item</th>
-              <th style={thStyle}>Impacto</th>
-            </tr>
-          </thead>
-          <tbody>
-            {top.map((item) => (
-              <tr key={item.label} style={{ borderBottom: '1px solid #222' }}>
-                <td style={tdStyle}>{item.label}</td>
-                <td style={{ ...tdStyle, textAlign: 'right' }}>
-                  {item.unit === '%' ? `${item.value}%` : formatCurrency(item.value)}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        <div style={{ marginTop: 12 }}>
-          <button style={linkButtonStyle}>Ver fichas técnicas desses itens</button>
+      <div style={{ backgroundColor: '#0A0A0A', border: '1px solid #1F1F1F', borderRadius: 12, padding: 24 }}>
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ color: '#FFFFFF', fontSize: 16, fontWeight: 600, marginBottom: 4 }}>
+            Maiores impactos no CMV
+          </div>
+          <p style={{ color: '#71717A', fontSize: 13, margin: 0 }}>
+            Esses itens representam a maior parte do seu custo
+          </p>
         </div>
+        
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 20 }}>
+          {top.map((item, index) => {
+            const percentage = (item.value / maxValue) * 100;
+            return (
+              <div key={item.label}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{
+                      width: 24,
+                      height: 24,
+                      borderRadius: 6,
+                      backgroundColor: index === 0 ? 'rgba(239, 68, 68, 0.2)' : 'rgba(71, 85, 105, 0.2)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: 11,
+                      fontWeight: 600,
+                      color: index === 0 ? '#EF4444' : '#94A3B8',
+                    }}>
+                      {index + 1}
+                    </div>
+                    <span style={{ color: '#E5E7EB', fontSize: 14, fontWeight: 500 }}>{item.label}</span>
+                  </div>
+                  <span style={{ color: '#FFFFFF', fontSize: 14, fontWeight: 600 }}>
+                    {item.unit === '%' ? `${item.value}%` : formatCurrency(item.value)}
+                  </span>
+                </div>
+                <div style={{ 
+                  width: '100%', 
+                  height: 4, 
+                  backgroundColor: '#18181B', 
+                  borderRadius: 2,
+                  overflow: 'hidden',
+                }}>
+                  <div style={{
+                    width: `${percentage}%`,
+                    height: '100%',
+                    background: index === 0 
+                      ? 'linear-gradient(90deg, #EF4444, #DC2626)'
+                      : 'linear-gradient(90deg, #3B82F6, #2563EB)',
+                    transition: 'width 0.5s ease',
+                  }} />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        
+        <button 
+          style={{
+            ...actionButtonStyle,
+            width: '100%',
+          }}
+          onClick={() => {
+            const firstWithRecipe = top.find(item => item.recipeId);
+            const targetId = firstWithRecipe?.recipeId || '1';
+            window.location.assign(`/fichas-tecnicas?recipeId=${targetId}&from=dashboard`);
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = '#2563EB';
+            e.currentTarget.style.transform = 'translateY(-1px)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = '#1E40AF';
+            e.currentTarget.style.transform = 'translateY(0)';
+          }}
+        >
+          Revisar fichas técnicas →
+        </button>
       </div>
     );
   };
@@ -132,28 +301,229 @@ export const Dashboard: React.FC = () => {
     if (!data?.recipeIndicator) return null;
     const r = data.recipeIndicator;
     return (
-      <div style={{ backgroundColor: '#111', border: '1px solid #222', borderRadius: 8, padding: 16 }}>
-        <div style={{ color: '#FFF', fontWeight: 600, marginBottom: 8 }}>{r.label}</div>
-        <div style={{ color: '#FFFFFF', fontSize: 24, fontWeight: 700, marginBottom: 4 }}>{r.value}</div>
-        <p style={{ color: '#A1A1AA', fontSize: 13, marginBottom: 12 }}>
-          {r.description || 'Itens acima do CMV ideal podem ser ajustados via Ficha Técnica.'}
-        </p>
-        <button style={linkButtonStyle}>{r.ctaLabel || 'Revisar fichas técnicas'}</button>
+      <div style={{ 
+        backgroundColor: '#0A0A0A', 
+        border: '1px solid #1F1F1F', 
+        borderRadius: 12, 
+        padding: 24,
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100%',
+      }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ 
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+            backgroundColor: 'rgba(251, 191, 36, 0.1)',
+            padding: '4px 10px',
+            borderRadius: 6,
+            marginBottom: 12,
+          }}>
+            <span style={{ fontSize: 14 }}>⚠️</span>
+            <span style={{ color: '#FCD34D', fontSize: 12, fontWeight: 500 }}>Atenção</span>
+          </div>
+          
+          <div style={{ color: '#71717A', fontSize: 12, fontWeight: 500, marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            {r.label}
+          </div>
+          <div style={{ color: '#FFFFFF', fontSize: 28, fontWeight: 700, marginBottom: 12, letterSpacing: '-0.02em' }}>
+            {r.value}
+          </div>
+          <p style={{ color: '#A1A1AA', fontSize: 13, margin: 0, lineHeight: 1.5 }}>
+            {r.description || 'Itens acima do CMV ideal podem ser ajustados'}
+          </p>
+        </div>
+        
+        <button 
+          style={{
+            ...secondaryButtonStyle,
+            marginTop: 16,
+          }}
+          onClick={() => window.location.assign('/fichas-tecnicas?from=dashboard')}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = '#18181B';
+            e.currentTarget.style.borderColor = '#3B82F6';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = 'transparent';
+            e.currentTarget.style.borderColor = '#27272A';
+          }}
+        >
+          {r.ctaLabel || 'Revisar fichas técnicas'}
+        </button>
+      </div>
+    );
+  };
+
+  /**
+   * Bloco "O que merece sua atenção hoje"
+   * Prioriza o insight mais crítico disponível
+   */
+  const renderAttentionBlock = () => {
+    if (!data) return null;
+
+    // Prioridade: topImpacts[0] > recipeIndicator
+    const topImpact = data.topImpacts?.[0];
+    const recipeInd = data.recipeIndicator;
+
+    if (!topImpact && !recipeInd) return null;
+
+    let title: string;
+    let description: string;
+    let ctaLabel: string;
+    let ctaLink: string;
+
+    if (topImpact) {
+      title = `${topImpact.label} é o maior impacto no seu CMV`;
+      description = `Este item representa ${formatCurrency(topImpact.value)} do seu custo. Pequenos ajustes aqui podem melhorar significativamente sua margem.`;
+      ctaLabel = 'Abrir ficha técnica';
+      ctaLink = `/fichas-tecnicas?recipeId=${topImpact.recipeId || '1'}&from=dashboard`;
+    } else if (recipeInd) {
+      title = recipeInd.label;
+      description = recipeInd.description || 'Alguns itens do cardápio podem ser otimizados.';
+      ctaLabel = 'Ver fichas técnicas';
+      ctaLink = '/fichas-tecnicas?from=dashboard';
+    } else {
+      return null;
+    }
+
+    return (
+      <div
+        style={{
+          backgroundColor: '#1E293B',
+          border: '1px solid #334155',
+          borderRadius: 8,
+          padding: 20,
+          marginBottom: 24,
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+          <div style={{ fontSize: 24 }}>💡</div>
+          <div style={{ flex: 1 }}>
+            <h2 style={{ color: '#FFF', fontSize: 18, fontWeight: 600, margin: '0 0 8px 0' }}>
+              O que merece sua atenção hoje
+            </h2>
+            <h3 style={{ color: '#E2E8F0', fontSize: 15, fontWeight: 500, margin: '0 0 8px 0' }}>
+              {title}
+            </h3>
+            <p style={{ color: '#94A3B8', fontSize: 14, margin: '0 0 16px 0', lineHeight: 1.5 }}>
+              {description}
+            </p>
+            <button
+              style={{
+                ...primaryButtonStyle,
+                backgroundColor: '#3B82F6',
+              }}
+              onClick={() => window.location.assign(ctaLink)}
+            >
+              {ctaLabel}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  /**
+   * Card de sugestão com IA + fonte explícita
+   */
+  const renderSuggestionCard = () => {
+    if (!suggestions || suggestions.length === 0) return null;
+
+    const suggestion = suggestions[0]; // Mostra apenas a primeira
+
+    return (
+      <div
+        style={{
+          backgroundColor: '#0F172A',
+          border: '1px solid #1E293B',
+          borderRadius: 8,
+          padding: 20,
+          marginBottom: 24,
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+          <div style={{ fontSize: 24 }}>🤖</div>
+          <div style={{ flex: 1 }}>
+            <h3 style={{ color: '#FFF', fontSize: 16, fontWeight: 600, margin: '0 0 8px 0' }}>
+              Sugestão baseada em dados
+            </h3>
+            <p style={{ color: '#E2E8F0', fontSize: 14, margin: '0 0 12px 0', lineHeight: 1.6 }}>
+              {suggestion.text}
+            </p>
+            <div
+              style={{
+                backgroundColor: '#1E293B',
+                border: '1px solid #334155',
+                borderRadius: 4,
+                padding: 12,
+                marginBottom: 12,
+              }}
+            >
+              <div style={{ color: '#94A3B8', fontSize: 12, marginBottom: 4, fontWeight: 600 }}>
+                FONTE DA SUGESTÃO
+              </div>
+              <div style={{ color: '#CBD5E1', fontSize: 13, lineHeight: 1.5 }}>
+                {suggestion.source}
+              </div>
+            </div>
+            {suggestion.action && (
+              <button
+                style={{
+                  ...linkButtonStyle,
+                  textDecoration: 'none',
+                  color: '#60A5FA',
+                  fontSize: 14,
+                  fontWeight: 500,
+                }}
+                onClick={() => window.location.assign(suggestion.action!.link)}
+              >
+                {suggestion.action.label} →
+              </button>
+            )}
+          </div>
+        </div>
       </div>
     );
   };
 
   const renderContent = () => {
     if (loading) {
-      return <p style={{ color: '#A1A1AA' }}>Carregando visão do período...</p>;
+      return (
+        <div style={{ padding: 32, textAlign: 'center' }}>
+          <p style={{ color: '#A1A1AA', fontSize: 15, margin: 0 }}>
+            Organizando seus dados do período...
+          </p>
+        </div>
+      );
     }
 
     if (error) {
       return (
         <div style={errorBoxStyle}>
-          <div><strong>Algo deu errado.</strong></div>
-          <div style={{ margin: '4px 0 12px 0' }}>{error}</div>
-          <button onClick={handleRetry} style={primaryButtonStyle}>Tentar novamente</button>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+            <span style={{ fontSize: 20 }}>⚠️</span>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 600, marginBottom: 6 }}>Algo deu errado</div>
+              <div style={{ marginBottom: 16, fontSize: 14, color: '#FCA5A5', lineHeight: 1.5 }}>{error}</div>
+              <button 
+                onClick={handleRetry} 
+                style={{
+                  ...primaryButtonStyle,
+                  backgroundColor: '#DC2626',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = '#B91C1C';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = '#DC2626';
+                }}
+              >
+                Tentar novamente
+              </button>
+            </div>
+          </div>
         </div>
       );
     }
@@ -161,12 +531,12 @@ export const Dashboard: React.FC = () => {
     if (!data || !data.cards || data.cards.length === 0) {
       return (
         <div style={emptyBoxStyle}>
-          <div style={{ marginBottom: 8, color: '#FFF', fontWeight: 600 }}>Sem dados ainda</div>
+          <div style={{ marginBottom: 8, color: '#FFF', fontWeight: 600 }}>Ainda não há dados para este período</div>
           <p style={{ color: '#A1A1AA', marginBottom: 12 }}>
-            Importe dados para visualizar o desempenho financeiro.
+            Importe seus dados de vendas e custos para começar a ver insights financeiros.
           </p>
           <button style={primaryButtonStyle} onClick={() => window.location.assign('/importar')}>
-            Importar dados
+            Importar dados agora
           </button>
         </div>
       );
@@ -174,6 +544,12 @@ export const Dashboard: React.FC = () => {
 
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+        {/* Blocos de IA lado a lado (estilo kanban) */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 20 }}>
+          {renderAttentionBlock()}
+          {renderSuggestionCard()}
+        </div>
+
         {/* Cards principais */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
           {mainCards.map(renderCard)}
@@ -189,9 +565,13 @@ export const Dashboard: React.FC = () => {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <PageHeader title="Dashboard" />
-      <p style={{ color: '#A1A1AA', marginTop: -8 }}>{PRODUCT_GUIDE}</p>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 24, paddingBottom: 40 }}>
+      <div>
+        <PageHeader title="Dashboard" />
+        <p style={{ color: '#71717A', marginTop: 8, fontSize: 14, lineHeight: 1.6, maxWidth: 720 }}>
+          {PRODUCT_GUIDE}
+        </p>
+      </div>
 
       <PeriodFilter value={period} onChange={setPeriod} />
 
@@ -220,37 +600,70 @@ const tdStyle: React.CSSProperties = {
 
 const linkButtonStyle: React.CSSProperties = {
   background: 'transparent',
-  color: '#93C5FD',
+  color: '#60A5FA',
   border: 'none',
   padding: 0,
   cursor: 'pointer',
   fontSize: 13,
-  textDecoration: 'underline',
+  fontWeight: 500,
+  textDecoration: 'none',
+  transition: 'color 0.2s ease',
+};
+
+const actionButtonStyle: React.CSSProperties = {
+  padding: '12px 20px',
+  backgroundColor: '#1E40AF',
+  color: '#FFF',
+  border: 'none',
+  borderRadius: 8,
+  cursor: 'pointer',
+  fontWeight: 600,
+  fontSize: 14,
+  transition: 'all 0.2s ease',
+  boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+};
+
+const secondaryButtonStyle: React.CSSProperties = {
+  padding: '10px 16px',
+  backgroundColor: 'transparent',
+  color: '#93C5FD',
+  border: '1px solid #27272A',
+  borderRadius: 8,
+  cursor: 'pointer',
+  fontWeight: 500,
+  fontSize: 13,
+  transition: 'all 0.2s ease',
+  width: '100%',
 };
 
 const primaryButtonStyle: React.CSSProperties = {
-  padding: '10px 18px',
+  padding: '12px 24px',
   backgroundColor: '#2563EB',
   color: '#FFF',
   border: 'none',
-  borderRadius: 6,
+  borderRadius: 8,
   cursor: 'pointer',
   fontWeight: 600,
+  fontSize: 14,
+  transition: 'all 0.2s ease',
+  boxShadow: '0 2px 4px rgba(37, 99, 235, 0.3)',
 };
 
 const errorBoxStyle: React.CSSProperties = {
-  padding: 16,
-  backgroundColor: '#7F1D1D',
+  padding: 20,
+  backgroundColor: 'rgba(127, 29, 29, 0.2)',
   color: '#FCA5A5',
-  borderRadius: 8,
-  maxWidth: 480,
+  borderRadius: 12,
+  border: '1px solid rgba(239, 68, 68, 0.3)',
+  maxWidth: 520,
 };
 
 const emptyBoxStyle: React.CSSProperties = {
-  padding: 20,
-  backgroundColor: '#111',
+  padding: 32,
+  backgroundColor: '#0A0A0A',
   color: '#FFF',
-  borderRadius: 8,
-  border: '1px dashed #333',
+  borderRadius: 12,
+  border: '1px dashed #27272A',
   maxWidth: 520,
+  textAlign: 'center',
 };

@@ -230,7 +230,7 @@ export default function Main(props: CSVImporterProps) {
                   index: row.index - startIndex,
                   values: {},
                 };
-                
+
                 // First pass: collect all values for each template key
                 const templateValues: { [templateKey: string]: string[] } = {};
                 row.values.forEach((value: string, valueIndex: number) => {
@@ -242,19 +242,19 @@ export default function Main(props: CSVImporterProps) {
                     templateValues[mapping.key].push(value);
                   }
                 });
-                
+
                 // Second pass: apply combiners and set final values
                 Object.entries(templateValues).forEach(([templateKey, values]) => {
                   const templateColumn = parsedTemplate.columns.find(tc => tc.key === templateKey);
                   const combiner = templateColumn?.combiner || defaultCombiner;
                   resultingRow.values[templateKey] = combiner(values);
                 });
-                
+
                 mappedRows.push(resultingRow);
               });
 
               const includedColumns = Object.values(columnMapping).filter(({ include }) => include);
-              
+
               // Get unique template columns (avoid duplicates from multi-mapping)
               const uniqueTemplateKeys = Array.from(new Set(includedColumns.map(({ key }) => key)));
               const uniqueColumns = uniqueTemplateKeys.map(key => {

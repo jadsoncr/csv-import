@@ -11,19 +11,21 @@ import { colors, spacing } from '../styles/tokens';
 export const AppLayout: React.FC = () => {
   return (
     <div style={{ 
-      backgroundColor: colors.background,
+      backgroundColor: '#000000',
+      backgroundImage: 'radial-gradient(circle at 20% 10%, rgba(37, 99, 235, 0.05) 0%, transparent 50%), radial-gradient(circle at 80% 80%, rgba(16, 185, 129, 0.03) 0%, transparent 50%)',
       minHeight: '100vh',
       color: colors.text 
     }}>
-      <Sidebar />
       <Topbar />
       
       {/* Área de conteúdo */}
       <main
         style={{
-          marginLeft: 240, // Largura da sidebar
           marginTop: 64, // Altura da topbar
           padding: spacing.lg,
+          maxWidth: 1800,
+          marginLeft: 'auto',
+          marginRight: 'auto',
         }}
       >
         <Outlet />
